@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
 	<!-- Audio input for the Oboe input stream; the app degrades to
-	     output-only if the user denies it. -->
+	     output-only if the user denies it. Also what voice input needs. -->
 	<uses-permission android:name="android.permission.RECORD_AUDIO" />
 	<!-- Foreground service keeping engine+audio alive in background -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -25,7 +25,18 @@
 	<uses-feature android:name="android.hardware.audio.low_latency" android:required="false" />
 	<uses-feature android:name="android.hardware.audio.pro" android:required="false" />
 
+	<!-- API 30+ package visibility: without this the platform's speech
+	     recogniser is invisible to us, isRecognitionAvailable() returns
+	     false, and voice input reports "no service on this device" on
+	     perfectly capable phones. -->
+	<queries>
+		<intent>
+			<action android:name="android.speech.RecognitionService" />
+		</intent>
+	</queries>
+
 	<application
+		android:name=".RackApplication"
 		android:label="${appLabel}"
 		android:icon="${appIcon}"
 		android:hasCode="true"
