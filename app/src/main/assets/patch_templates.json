@@ -1,0 +1,32 @@
+{
+  "vcv_vco": {
+    "module_type": "VCV VCO",
+    "default_params": { "fundamental": 440, "saw_sync": 0, "pulse_width": 0.5, "sync_input": 0 },
+    "connections": []
+  },
+  "vcv_vcf": {
+    "module_type": "VCV VCF",
+    "default_params": { "cutoff": 1000, "resonance": 0.5, "env_amount": 1.0 },
+    "connections": []
+  },
+  "vcv_vca": {
+    "module_type": "VCV VCA",
+    "default_params": { "gain": 0.8, "env_amount": 1.0 },
+    "connections": []
+  },
+  "vcv_lfo": {
+    "module_type": "VCV LFO",
+    "default_params": { "frequency": 5.0, "type": "sine", "delay": 0.0 },
+    "connections": []
+  },
+  "vcv_adsr": {
+    "module_type": "VCV ADSR",
+    "default_params": { "attack": 0.01, "decay": 0.1, "sustain": 0.7, "release": 1.0 },
+    "connections": []
+  },
+  "vcv_sample_player": {
+    "module_type": "VCV Sample Player",
+    "default_params": { "sample_file": "", "root_key": 60, "gain": 0.5, "loop": false },
+    "connections": []
+  }
+}
