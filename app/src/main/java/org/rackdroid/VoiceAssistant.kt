@@ -17,7 +17,8 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.view.Gravity
-import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -25,35 +26,21 @@ import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import java.io.File
 import java.lang.ref.WeakReference
 import java.util.Locale
 
 /**
- * Voice input for the rack -- milestone 1: speech to text.
+ * Voice input for the rack -- milestones 1 & 2: speech to text + patch generation.
  *
  * A mic button floats over the bottom-right corner of the rack. Tap it,
- * speak, and what the device heard comes back in a glass card you can
- * select or copy anywhere.
- *
- * Why a floating button and not a toolbar icon: the tool row is a fixed
- * 8-column grid of exactly sixteen buttons (addMidiButton), two full rows.
- * A seventeenth needs a third row and reshapes the whole card, which is a
- * far larger change than this feature warrants.
- *
- * Why an Application subclass does the attaching: MainActivity is 142 KB
- * of programmatic UI and every edit to it is a large, risky diff. An
- * ActivityLifecycleCallbacks hook gives the same result with MainActivity.kt
- * untouched. See RackApplication.kt.
- *
- * The recogniser is the platform's own (SpeechRecognizer), not a bundled
- * model and not a network call of ours. That matters for this app: its
- * whole privacy story is that it talks to nobody. The device decides where
- * the audio goes -- on many phones the platform service is on-device; on
- * some it is the assistant's cloud. Like microphone access itself, it is
- * the user's setting to make; this class only reports when that choice
- * needs a network the phone does not have.
+ * speak, and what the device heard comes back in a glass card with an
+ * *editable* text field plus a "Generate Patch" action that turns the
+ * (possibly edited) text into a VCV .vcv patch and loads it into the rack
+ * through the app's existing patch-import intent.
  */
 class VoiceAssistant private constructor(private val activity: MainActivity) {
 
@@ -65,8 +52,6 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 
 	private fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
 
-	/** Puts the button on screen. Idempotent: calling it twice is a no-op,
-	 * which matters because it is driven from onActivityResumed. */
 	fun attach() {
 		if (popup != null) {
 			showButton()
@@ -87,7 +72,6 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 		}
 		mic = button
 		val p = PopupWindow(button, dp(52), dp(52))
-		// Never steal keys from the canvas, same rule the toolbar follows.
 		p.isFocusable = false
 		popup = p
 		showButton()
@@ -102,15 +86,12 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 			return
 		}
 		runCatching {
-			// Clear of the navigation bar, and above where the module palette
-			// opens along the bottom of the screen.
 			val nav = ViewCompat.getRootWindowInsets(decor)
 				?.getInsets(WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
 			p.showAtLocation(decor, Gravity.BOTTOM or Gravity.END, dp(14), nav + dp(104))
 		}
 	}
 
-	/** Takes the button down before the activity goes away. */
 	fun detach() {
 		stopListening()
 		runCatching { popup?.dismiss() }
@@ -122,14 +103,14 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 
 	private fun onMicTapped() {
 		if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-				!= PackageManager.PERMISSION_GRANTED) {
+			!= PackageManager.PERMISSION_GRANTED
+		) {
 			activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC)
 			return
 		}
 		if (listening) stopListening() else startListening()
 	}
 
-	/** Called from MainActivity.onRequestPermissionsResult for REQ_MIC. */
 	fun onPermissionResult(granted: Boolean) {
 		if (granted) {
 			ui.post { runCatching { startListening() } }
@@ -168,12 +149,11 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 					SpeechRecognizer.ERROR_NETWORK,
 					SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
 						"Speech recognition needs a network connection on this device."
-					SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The recogniser is busy; try again in a moment."
+					SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+						"The recogniser is busy; try again in a moment."
 					SpeechRecognizer.ERROR_CLIENT -> "Voice input was cancelled"
 					else -> "Voice input failed ($error)"
 				}
-				// ERROR_CLIENT is what a deliberate cancel produces; it is not
-				// worth a toast over the tap that caused it.
 				if (error != SpeechRecognizer.ERROR_CLIENT) toast(message)
 			}
 
@@ -201,8 +181,6 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 				RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
 			putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
 			putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-			// A few candidates: the first is usually the best, but this is the
-			// hook milestone 2 wants for "did you mean a different module".
 			putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
 			putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, activity.packageName)
 		}
@@ -231,8 +209,6 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 		runCatching { r.destroy() }
 	}
 
-	/** Amber at rest, the danger red while it is actually listening -- the
-	 * palette the rest of the app already uses for "you are touching this". */
 	private fun setListeningUi(on: Boolean) {
 		listening = on
 		val b = mic ?: return
@@ -242,13 +218,14 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 		b.contentDescription = if (on) "Listening" else "Voice input"
 	}
 
-	// ---- Result ----
+	// ---- Result: editable transcript + patch generation ----
 
 	private fun showTranscript(text: String) {
 		val col = LinearLayout(activity).apply {
 			orientation = LinearLayout.VERTICAL
 			setPadding(dp(20), dp(18), dp(20), dp(20))
 		}
+
 		col.addView(TextView(activity).apply {
 			setText("Heard")
 			setTextColor(AppTheme.current.accent)
@@ -256,28 +233,74 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 			typeface = Typeface.DEFAULT_BOLD
 			setPadding(0, 0, 0, dp(8))
 		})
-		col.addView(TextView(activity).apply {
-			setText("Copy it to paste anywhere, or tap the mic and say it again.")
-			setTextColor(AppTheme.current.textSecondary)
-			textSize = 13f
-			setPadding(0, 0, 0, dp(12))
-		})
-		col.addView(TextView(activity).apply {
-			this.text = text
+
+		val edit = EditText(activity).apply {
+			setText(text)
 			setTextColor(AppTheme.current.textPrimary)
 			textSize = 16f
-			setTextIsSelectable(true)
 			setPadding(dp(14), dp(14), dp(14), dp(14))
 			background = GradientDrawable().apply {
 				cornerRadius = dp(12).toFloat()
 				setColor(AppTheme.withAlpha(AppTheme.current.surfaceInset, 40))
 			}
+			setSingleLine(false)
+			setLines(3)
+			setMaxLines(8)
+		}
+		col.addView(edit)
+
+		col.addView(TextView(activity).apply {
+			setText("Edit anything misheard, then tap Generate Patch to build a .vcv patch and load it into the rack.")
+			setTextColor(AppTheme.current.textSecondary)
+			textSize = 12f
+			setPadding(0, dp(6), 0, dp(8))
 		})
 
-		val dialog = AlertDialog.Builder(activity)
-			.setPositiveButton("Copy") { _, _ -> copyToClipboard(text) }
-			.setNegativeButton(android.R.string.cancel, null)
-			.create()
+		val btnRow = LinearLayout(activity).apply {
+			orientation = LinearLayout.HORIZONTAL
+			setGravity(Gravity.CENTER)
+			setPadding(0, dp(6), 0, dp(6))
+		}
+
+		// Declared before the button lambdas that dismiss it.
+		lateinit var dialog: AlertDialog
+
+		val genButton = Button(activity).apply {
+			text = "Generate Patch"
+			setTextSize(14f)
+			setOnClickListener {
+				val finalText = edit.text.toString().trim()
+				if (finalText.isEmpty()) {
+					toast("Say something first")
+				} else {
+					dialog.dismiss()
+					generateAndLoadPatch(finalText)
+				}
+			}
+		}
+
+		val copyButton = Button(activity).apply {
+			text = "Copy"
+			setTextSize(14f)
+			setOnClickListener {
+				copyToClipboard(edit.text.toString())
+				toast("Copied")
+				dialog.dismiss()
+			}
+		}
+
+		val cancelButton = Button(activity).apply {
+			text = "Cancel"
+			setTextSize(14f)
+			setOnClickListener { dialog.dismiss() }
+		}
+
+		btnRow.addView(genButton)
+		btnRow.addView(copyButton)
+		btnRow.addView(cancelButton)
+		col.addView(btnRow)
+
+		dialog = AlertDialog.Builder(activity).create()
 		dialog.setView(ScrollView(activity).apply { addView(col) })
 		dialog.window?.apply {
 			setBackgroundDrawable(GradientDrawable().apply {
@@ -287,19 +310,58 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 			})
 			setDimAmount(0.4f)
 		}
-		// Same two hooks every other glass dialog in the app goes through:
-		// glassify blurs what is behind it, trackTopWindow keeps a tutorial
-		// card visible on top if one is open.
 		runCatching { activity.trackTopWindow(dialog) }
 		runCatching { activity.glassify(dialog.window) }
 		dialog.show()
+	}
+
+	private fun generateAndLoadPatch(command: String) {
+		val patchJson = VoicePatchGenerator.create().generatePatch(command)
+		val file = savePatchFile(patchJson)
+		if (file == null) {
+			toast("Could not save patch file")
+			return
+		}
+		toast("Patch generated: ${file.name}")
+		loadPatchFile(file)
+	}
+
+	private fun savePatchFile(json: String): File? {
+		return try {
+			val patchesDir = File(activity.filesDir, "user/patches")
+			if (!patchesDir.exists()) patchesDir.mkdirs()
+			val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+				.format(java.util.Date())
+			val file = File(patchesDir, "voice_$ts.vcv")
+			file.writeText(json)
+			file
+		} catch (e: Exception) {
+			toast("Save failed: ${e.message}")
+			null
+		}
+	}
+
+	private fun loadPatchFile(file: File) {
+		try {
+			val authority = "${activity.packageName}.fileprovider"
+			val uri = FileProvider.getUriForFile(activity, authority, file)
+			val intent = Intent(Intent.ACTION_VIEW).apply {
+				setDataAndType(uri, "application/octet-stream")
+				addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+				addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+				addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+				putExtra(Intent.EXTRA_TITLE, file.name)
+			}
+			activity.startActivity(intent)
+		} catch (e: Exception) {
+			toast("Load failed: ${e.message}")
+		}
 	}
 
 	private fun copyToClipboard(text: String) {
 		runCatching {
 			val cm = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 			cm.setPrimaryClip(ClipData.newPlainText("RackDroid voice", text))
-			toast("Copied")
 		}
 	}
 
@@ -308,23 +370,14 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 	}
 
 	companion object {
-		/** Request code MainActivity routes back to onPermissionResult. */
 		const val REQ_MIC = 4
 
-		// One assistant per activity, and only a weak reference to it: the
-		// activity is kept alive by the manifest across rotation, and this
-		// hook fires again on every resume. Rebuilding the popup every time
-		// would stack mic buttons on top of each other.
 		private val assistants = java.util.WeakHashMap<MainActivity, VoiceAssistant>()
 
-		/** Entry point for RackApplication. */
 		fun attachTo(activity: Activity) {
 			if (activity !is MainActivity) return
 			val existing = assistants[activity]
 			if (existing != null) {
-				// The popup can be torn down with the window while the activity
-				// itself survives (a language change restarts the process; a
-				// rotation does not). Re-show rather than rebuild.
 				runCatching { existing.attach() }
 				return
 			}
@@ -346,8 +399,6 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 		fun isKnown(activity: Activity): Boolean =
 			activity is MainActivity && assistants.containsKey(activity)
 
-		/** Nothing here holds the activity strongly; this exists so the
-		 *  WeakReference import is not a lie about the design. */
 		@Suppress("unused")
 		private val self = WeakReference<VoiceAssistant>(null)
 	}
