@@ -1,11 +1,6 @@
-package org.rackdroid
-
-import android.Manifest
-import android.app.Activity
-import android.app.AlertDialog
+import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
@@ -25,20 +20,19 @@ import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import java.io.File
 import java.util.Locale
 import java.util.WeakHashMap
+import java.util.Date
 
-/**
- * Voice input for the rack -- speech to text plus patch generation.
- *
- * A mic button floats over the bottom-right corner of the rack. Tap it, speak, and the words come back in a glass card with an editable text field and a "Generate Patch" action that turns the (possibly edited) text into a VCV .vcv patch and loads it through the app's existing patch import path.
- *
- * Patch files are written to the app's external files dir so file managers (ZArchiver, Solid Explorer, etc.) can see them. FileProvider external-path maps that directory into a user-visible URI.
+/** Voice input for the rack -- speech to text plus patch generation.
+
+ A mic button floats over the bottom-right corner of the rack. Tap it, speak, and the words come back in a glass card with an editable text field and a "Generate Patch" action that turns the (possibly edited) text into a VCV .vcv patch and loads it through the app's existing patch import path.
+
+ Patch files are written to the app's external files dir so file managers (ZArchiver, Solid Explorer, etc.) can see them. FileProvider external-path maps that directory into a user-visible URI.
  */
 
 class VoiceAssistant private constructor(private val activity: MainActivity) {
@@ -147,11 +141,9 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
                 val message = when (error) {
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
                     SpeechRecognizer.ERROR_NO_MATCH -> "Did not catch that"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-                        "Microphone permission is needed for voice input."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is needed for voice input."
                     SpeechRecognizer.ERROR_NETWORK,
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-                        "Speech recognition needs a network connection on this device."
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech recognition needs a network connection on this device."
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The recogniser is busy; try again in a moment."
                     SpeechRecognizer.ERROR_CLIENT -> "Voice input was cancelled"
                     else -> "Voice input failed ($error)"
@@ -328,21 +320,18 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
     }
 
     private fun savePatchFile(json: String): File? {
-        return try {
-            // Write to app-specific external files dir so file managers can see it.
-            val context = activity as Context
-            val patchesDir = context.getExternalFilesDir(null)?.resolve("patches")
-                ?: context.filesDir.resolve("patches")
-            if (!patchesDir.exists()) patchesDir.mkdirs()
-            val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
-                .format(java.util.Date())
-            val file = File(patchesDir, "voice_" + ts + ".vcv")
-            file.writeText(json)
-            file
-        } catch (e: Exception) {
-            toast("Save failed: " + (e.message ?: "unknown"))
-            null
-        }
+        // Write to app-specific external files dir so file managers can see it.
+        // Use getExternalFilesDir first (works on all Android versions);
+        // fall back to filesDir if that fails for any reason.
+        val context: Context = activity.applicationContext
+        val patchesDir = context.getExternalFilesDir(null)?.resolve("patches")
+            ?: activity.filesDir.resolve("patches")
+        if (!patchesDir.exists()) patchesDir.mkdirs()
+        val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+            .format(Date())
+        val file = File(patchesDir, "voice_" + ts + ".vcv")
+        file.writeText(json)
+        file
     }
 
     private fun loadPatchFile(file: File) {
