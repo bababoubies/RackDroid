@@ -30,8 +30,8 @@ import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import java.io.File
-import java.lang.ref.WeakReference
 import java.util.Locale
+import java.util.WeakHashMap
 
 /**
  * Voice input for the rack -- milestones 1 & 2: speech to text + patch generation.
@@ -394,8 +394,5 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 
         fun isKnown(activity: Activity): Boolean =
             activity is MainActivity && assistants.containsKey(activity)
-
-        @Suppress("unused")
-        private val self = WeakReference<VoiceAssistant>(null)
     }
 }
