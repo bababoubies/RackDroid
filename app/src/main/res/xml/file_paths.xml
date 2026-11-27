@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="\"1.0\" encoding=\"utf-8\"?>
 <paths>
     <!-- Rack user dir (patches live in patches under external files dir) -->
     <external-files-path name="user" path="patches/" />
