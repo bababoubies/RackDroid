@@ -41,6 +41,10 @@ import java.util.WeakHashMap
  * field and a "Generate Patch" action that turns the (possibly edited)
  * text into a VCV .vcv patch and loads it through the app's existing
  * patch import path.
+ *
+ * Patch files are written to the app's external files dir so file managers
+ * (ZArchiver, Solid Explorer, etc.) can see them. FileProvider external-path
+ * maps that directory into a user-visible URI.
  */
 class VoiceAssistant private constructor(private val activity: MainActivity) {
 
@@ -153,8 +157,7 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
                     SpeechRecognizer.ERROR_NETWORK,
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
                         "Speech recognition needs a network connection on this device."
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
-                        "The recogniser is busy; try again in a moment."
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The recogniser is busy; try again in a moment."
                     SpeechRecognizer.ERROR_CLIENT -> "Voice input was cancelled"
                     else -> "Voice input failed ($error)"
                 }
@@ -331,7 +334,9 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
 
     private fun savePatchFile(json: String): File? {
         return try {
-            val patchesDir = File(activity.filesDir, "user/patches")
+            // Write to app-specific external files dir so file managers can see it.
+            val patchesDir = activity.getExternalFilesDir(null)?.resolve("patches")
+            ?: return null
             if (!patchesDir.exists()) patchesDir.mkdirs()
             val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
                 .format(java.util.Date())
