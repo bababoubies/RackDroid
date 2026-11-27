@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-	<!-- Rack user dir (patches live in user/patches) -->
-	<files-path name="user" path="user/" />
+	<!-- Rack user dir (patches live in patches) -->
+	<external-path name="user" path="patches/" />
 </paths>
