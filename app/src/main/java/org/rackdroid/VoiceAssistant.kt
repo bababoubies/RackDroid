@@ -34,13 +34,13 @@ import java.util.Locale
 import java.util.WeakHashMap
 
 /**
- * Voice input for the rack -- milestones 1 & 2: speech to text + patch generation.
+ * Voice input for the rack -- speech to text plus patch generation.
  *
  * A mic button floats over the bottom-right corner of the rack. Tap it,
- * speak, and what the device heard comes back in a glass card with an
- * *editable* text field plus a "Generate Patch" action that turns the
- * (possibly edited) text into a VCV .vcv patch and loads it into the rack
- * through the app's existing patch-import intent.
+ * speak, and the words come back in a glass card with an editable text
+ * field and a "Generate Patch" action that turns the (possibly edited)
+ * text into a VCV .vcv patch and loads it through the app's existing
+ * patch import path.
  */
 class VoiceAssistant private constructor(private val activity: MainActivity) {
 
@@ -57,19 +57,19 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
             showButton()
             return
         }
-        val button = ImageButton(activity).apply {
-            setImageResource(R.drawable.ic_tb_mic)
-            imageTintList = android.content.res.ColorStateList.valueOf(AppTheme.current.accent)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "Voice input"
-            setPadding(dp(11), dp(11), dp(11), dp(11))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(AppTheme.withAlpha(AppTheme.current.surface, 88))
-                setStroke(dp(2), AppTheme.current.accent)
-            }
-            setOnClickListener { onMicTapped() }
-        }
+        val button = ImageButton(activity)
+        button.setImageResource(R.drawable.ic_tb_mic)
+        button.imageTintList = android.content.res.ColorStateList.valueOf(AppTheme.current.accent)
+        button.scaleType = ImageView.ScaleType.FIT_CENTER
+        button.contentDescription = "Voice input"
+        button.setPadding(dp(11), dp(11), dp(11), dp(11))
+        val bg = GradientDrawable()
+        bg.shape = GradientDrawable.OVAL
+        bg.setColor(AppTheme.withAlpha(AppTheme.current.surface, 88))
+        bg.setStroke(dp(2), AppTheme.current.accent)
+        button.background = bg
+        button.setOnClickListener { onMicTapped() }
+
         mic = button
         val p = PopupWindow(button, dp(52), dp(52))
         p.isFocusable = false
@@ -128,11 +128,19 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
         val rec = SpeechRecognizer.createSpeechRecognizer(activity)
         recognizer = rec
         rec.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) = setListeningUi(true)
+            override fun onReadyForSpeech(params: Bundle?) {
+                setListeningUi(true)
+            }
+
             override fun onBeginningOfSpeech() {}
+
             override fun onRmsChanged(rmsdB: Float) {}
+
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() = setListeningUi(false)
+
+            override fun onEndOfSpeech() {
+                setListeningUi(false)
+            }
 
             override fun onError(error: Int) {
                 setListeningUi(false)
@@ -169,17 +177,19 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
             }
 
             override fun onPartialResults(partialResults: Bundle?) {}
+
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
 
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, activity.packageName)
-        }
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        intent.putExtra(
+            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+        )
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, activity.packageName)
         runCatching { rec.startListening(intent) }.onFailure {
             releaseRecognizer()
             setListeningUi(false)
@@ -209,105 +219,102 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
         listening = on
         val b = mic ?: return
         b.imageTintList = android.content.res.ColorStateList.valueOf(
-            if (on) AppTheme.current.danger else AppTheme.current.accent)
+            if (on) AppTheme.current.danger else AppTheme.current.accent
+        )
         b.alpha = if (on) 0.6f else 1f
         b.contentDescription = if (on) "Listening" else "Voice input"
     }
 
-    // ---- Result: editable transcript + patch generation ----
+    // ---- Result: editable transcript plus patch generation ----
 
-    private fun showTranscript(text: String) {
-        val col = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(20))
-        }
+    private fun showTranscript(heardText: String) {
+        val col = LinearLayout(activity)
+        col.orientation = LinearLayout.VERTICAL
+        col.setPadding(dp(20), dp(18), dp(20), dp(20))
 
-        col.addView(TextView(activity).apply {
-            setText("Heard")
-            setTextColor(AppTheme.current.accent)
-            textSize = 17f
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, dp(8))
-        })
+        val header = TextView(activity)
+        header.setText("Heard")
+        header.setTextColor(AppTheme.current.accent)
+        header.textSize = 17f
+        header.typeface = Typeface.DEFAULT_BOLD
+        header.setPadding(0, 0, 0, dp(8))
+        col.addView(header)
 
-        val edit = EditText(activity).apply {
-            setText(text)
-            setTextColor(AppTheme.current.textPrimary)
-            textSize = 16f
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(AppTheme.withAlpha(AppTheme.current.surfaceInset, 40))
-            }
-            setSingleLine(false)
-            setLines(3)
-            setMaxLines(8)
-        }
+        val edit = EditText(activity)
+        edit.setText(heardText)
+        edit.setTextColor(AppTheme.current.textPrimary)
+        edit.textSize = 16f
+        edit.setPadding(dp(14), dp(14), dp(14), dp(14))
+        val editBg = GradientDrawable()
+        editBg.cornerRadius = dp(12).toFloat()
+        editBg.setColor(AppTheme.withAlpha(AppTheme.current.surfaceInset, 40))
+        edit.background = editBg
+        edit.setSingleLine(false)
+        edit.setLines(3)
+        edit.setMaxLines(8)
         col.addView(edit)
 
-        col.addView(TextView(activity).apply {
-            setText("Edit anything misheard, then tap Generate Patch to build a .vcv patch and load it into the rack.")
-            setTextColor(AppTheme.current.textSecondary)
-            textSize = 12f
-            setPadding(0, dp(6), 0, dp(8))
-        })
+        val hint = TextView(activity)
+        hint.setText("Edit anything misheard, then tap Generate Patch to build a .vcv patch and load it into the rack.")
+        hint.setTextColor(AppTheme.current.textSecondary)
+        hint.textSize = 12f
+        hint.setPadding(0, dp(6), 0, dp(8))
+        col.addView(hint)
 
-        val btnRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setGravity(Gravity.CENTER)
-            setPadding(0, dp(6), 0, dp(6))
-        }
+        val btnRow = LinearLayout(activity)
+        btnRow.orientation = LinearLayout.HORIZONTAL
+        btnRow.gravity = Gravity.CENTER
+        btnRow.setPadding(0, dp(6), 0, dp(6))
 
-        // Declared before the button lambdas that dismiss it.
-        lateinit var dialog: AlertDialog
+        val dialog = AlertDialog.Builder(activity).create()
 
-        val genButton = Button(activity).apply {
-            text = "Generate Patch"
-            setTextSize(14f)
-            setOnClickListener {
-                val finalText = edit.text.toString().trim()
-                if (finalText.isEmpty()) {
-                    toast("Say something first")
-                } else {
-                    dialog.dismiss()
-                    generateAndLoadPatch(finalText)
-                }
-            }
-        }
-
-        val copyButton = Button(activity).apply {
-            text = "Copy"
-            setTextSize(14f)
-            setOnClickListener {
-                copyToClipboard(edit.text.toString())
-                toast("Copied")
+        val genButton = Button(activity)
+        genButton.setText("Generate Patch")
+        genButton.setTextSize(14f)
+        genButton.setOnClickListener {
+            val finalText = edit.text.toString().trim()
+            if (finalText.isEmpty()) {
+                toast("Say something first")
+            } else {
                 dialog.dismiss()
+                generateAndLoadPatch(finalText)
             }
         }
 
-        val cancelButton = Button(activity).apply {
-            text = "Cancel"
-            setTextSize(14f)
-            setOnClickListener { dialog.dismiss() }
+        val copyButton = Button(activity)
+        copyButton.setText("Copy")
+        copyButton.setTextSize(14f)
+        copyButton.setOnClickListener {
+            copyToClipboard(edit.text.toString())
+            toast("Copied")
+            dialog.dismiss()
         }
+
+        val cancelButton = Button(activity)
+        cancelButton.setText("Cancel")
+        cancelButton.setTextSize(14f)
+        cancelButton.setOnClickListener { dialog.dismiss() }
 
         btnRow.addView(genButton)
         btnRow.addView(copyButton)
         btnRow.addView(cancelButton)
         col.addView(btnRow)
 
-        dialog = AlertDialog.Builder(activity).create()
-        dialog.setView(ScrollView(activity).apply { addView(col) })
-        dialog.window?.apply {
-            setBackgroundDrawable(GradientDrawable().apply {
-                cornerRadius = dp(24).toFloat()
-                setColor(activity.glassCardColor())
-                setStroke(dp(1), AppTheme.edge(18))
-            })
-            setDimAmount(0.4f)
+        val scroll = ScrollView(activity)
+        scroll.addView(col)
+        dialog.setView(scroll)
+
+        val win = dialog.window
+        if (win != null) {
+            val cardBg = GradientDrawable()
+            cardBg.cornerRadius = dp(24).toFloat()
+            cardBg.setColor(activity.glassCardColor())
+            cardBg.setStroke(dp(1), AppTheme.edge(18))
+            win.setBackgroundDrawable(cardBg)
+            win.setDimAmount(0.4f)
+            runCatching { activity.glassify(win) }
         }
         runCatching { activity.trackTopWindow(dialog) }
-        runCatching { activity.glassify(dialog.window) }
         dialog.show()
     }
 
@@ -318,7 +325,7 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
             toast("Could not save patch file")
             return
         }
-        toast("Patch generated: ${file.name}")
+        toast("Patch generated: " + file.name)
         loadPatchFile(file)
     }
 
@@ -328,36 +335,35 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
             if (!patchesDir.exists()) patchesDir.mkdirs()
             val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
                 .format(java.util.Date())
-            val file = File(patchesDir, "voice_$ts.vcv")
+            val file = File(patchesDir, "voice_" + ts + ".vcv")
             file.writeText(json)
             file
         } catch (e: Exception) {
-            toast("Save failed: ${e.message}")
+            toast("Save failed: " + (e.message ?: "unknown"))
             null
         }
     }
 
     private fun loadPatchFile(file: File) {
         try {
-            val authority = "${activity.packageName}.fileprovider"
+            val authority = activity.packageName + ".fileprovider"
             val uri = FileProvider.getUriForFile(activity, authority, file)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/octet-stream")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                putExtra(Intent.EXTRA_TITLE, file.name)
-            }
+            val intent = Intent(Intent.ACTION_VIEW)
+            intent.setDataAndType(uri, "application/octet-stream")
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            intent.putExtra(Intent.EXTRA_TITLE, file.name)
             activity.startActivity(intent)
         } catch (e: Exception) {
-            toast("Load failed: ${e.message}")
+            toast("Load failed: " + (e.message ?: "unknown"))
         }
     }
 
-    private fun copyToClipboard(text: String) {
+    private fun copyToClipboard(value: String) {
         runCatching {
             val cm = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("RackDroid voice", text))
+            cm.setPrimaryClip(ClipData.newPlainText("RackDroid voice", value))
         }
     }
 
