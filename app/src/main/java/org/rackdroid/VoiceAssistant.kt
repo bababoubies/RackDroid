@@ -36,16 +36,11 @@ import java.util.WeakHashMap
 /**
  * Voice input for the rack -- speech to text plus patch generation.
  *
- * A mic button floats over the bottom-right corner of the rack. Tap it,
- * speak, and the words come back in a glass card with an editable text
- * field and a "Generate Patch" action that turns the (possibly edited)
- * text into a VCV .vcv patch and loads it through the app's existing
- * patch import path.
+ * A mic button floats over the bottom-right corner of the rack. Tap it, speak, and the words come back in a glass card with an editable text field and a "Generate Patch" action that turns the (possibly edited) text into a VCV .vcv patch and loads it through the app's existing patch import path.
  *
- * Patch files are written to the app's external files dir so file managers
- * (ZArchiver, Solid Explorer, etc.) can see them. FileProvider external-path
- * maps that directory into a user-visible URI.
+ * Patch files are written to the app's external files dir so file managers (ZArchiver, Solid Explorer, etc.) can see them. FileProvider external-path maps that directory into a user-visible URI.
  */
+
 class VoiceAssistant private constructor(private val activity: MainActivity) {
 
     private val ui = Handler(Looper.getMainLooper())
@@ -335,8 +330,9 @@ class VoiceAssistant private constructor(private val activity: MainActivity) {
     private fun savePatchFile(json: String): File? {
         return try {
             // Write to app-specific external files dir so file managers can see it.
-            val patchesDir = activity.getExternalFilesDir(null)?.resolve("patches")
-            ?: return null
+            val context = activity as Context
+            val patchesDir = context.getExternalFilesDir(null)?.resolve("patches")
+                ?: context.filesDir.resolve("patches")
             if (!patchesDir.exists()) patchesDir.mkdirs()
             val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
                 .format(java.util.Date())
